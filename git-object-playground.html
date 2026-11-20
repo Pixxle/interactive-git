@@ -1,0 +1,662 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Git Object Playground</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600&family=IBM+Plex+Sans:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+:root{
+  /* layout: sticky toolbar, horizontal commit timeline, then object inspector | tree editor, then operation log */
+  --bg:#eef0ec; --surface:#ffffff; --ink:#1b211f; --muted:#5f6a65; --line:#d5dad5; --code:#f3f5f1;
+  --accent:#c4401c; --accent-soft:#fbe6df; --danger:#b42318; --danger-soft:#fde8e6; --ok:#16794a;
+  --font-body:"IBM Plex Sans", system-ui, -apple-system, "Segoe UI", sans-serif;
+  --font-mono:"IBM Plex Mono", ui-monospace, Menlo, Consolas, monospace;
+  --l0:#2459d6; --l1:#c4401c; --l2:#0e7b6f; --l3:#7a3fe0; --l4:#a86206; --l5:#bf1f6a;
+}
+@media (prefers-color-scheme: dark){
+  :root:not([data-theme="light"]){
+    --bg:#121614; --surface:#1a1f1d; --ink:#e4e9e6; --muted:#9aa49f; --line:#2f3733; --code:#141917;
+    --accent:#ff7a52; --accent-soft:#3a2219; --danger:#ff6b5e; --danger-soft:#3b1d1a; --ok:#4cc78a;
+    --l0:#6f9bff; --l1:#ff7a52; --l2:#3fc6b4; --l3:#b08cff; --l4:#f0a63a; --l5:#ff6fae;
+    color-scheme:dark;
+  }
+}
+:root[data-theme="dark"]{
+  --bg:#121614; --surface:#1a1f1d; --ink:#e4e9e6; --muted:#9aa49f; --line:#2f3733; --code:#141917;
+  --accent:#ff7a52; --accent-soft:#3a2219; --danger:#ff6b5e; --danger-soft:#3b1d1a; --ok:#4cc78a;
+  --l0:#6f9bff; --l1:#ff7a52; --l2:#3fc6b4; --l3:#b08cff; --l4:#f0a63a; --l5:#ff6fae;
+  color-scheme:dark;
+}
+*{box-sizing:border-box}
+html,body{margin:0}
+body{background:var(--bg);color:var(--ink);font:14px/1.45 var(--font-body)}
+.mono,code,pre,select,input,textarea{font-family:var(--font-mono)}
+button,select,input,textarea{font-size:13px;color:var(--ink)}
+button{font-family:var(--font-body);background:var(--surface);border:1px solid var(--line);border-radius:6px;padding:5px 10px;cursor:pointer}
+button:hover:not(:disabled){border-color:var(--ink)}
+button:disabled{opacity:.45;cursor:not-allowed}
+button.primary{background:var(--accent);border-color:var(--accent);color:#fff;font-weight:600}
+:root[data-theme="dark"] button.primary{color:#1a0c06}
+button:focus-visible,select:focus-visible,input:focus-visible,textarea:focus-visible,.node:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+select,input[type=text],textarea{background:var(--code);border:1px solid var(--line);border-radius:6px;padding:5px 8px}
+label{display:inline-flex;gap:5px;align-items:center;color:var(--muted)}
+
+header.top{position:sticky;top:0;z-index:5;background:var(--surface);border-bottom:1px solid var(--line);padding:10px 20px;display:flex;flex-wrap:wrap;gap:10px 22px;align-items:center}
+.brand{font-family:var(--font-mono);font-weight:600;font-size:15px;display:flex;align-items:center;gap:8px}
+.brand svg{flex:none}
+.group{display:flex;align-items:center;gap:6px;flex-wrap:wrap}
+.lbl{font-size:12px;color:var(--muted)}
+.lbl b{color:var(--ink);font-family:var(--font-mono);font-weight:500}
+.chips{display:flex;gap:6px;flex-wrap:wrap}
+.chip{display:inline-flex;border:1px solid var(--line);border-radius:999px;overflow:hidden}
+.chip button{border:0;border-radius:0;font-family:var(--font-mono);font-size:12px;padding:3px 9px;background:transparent}
+.chip.on{border-color:var(--accent);background:var(--accent-soft)}
+.chip.on button{color:var(--accent);font-weight:600}
+.chip .x{padding:3px 7px;color:var(--muted);border-left:1px solid var(--line)}
+.sep{width:1px;align-self:stretch;background:var(--line)}
+
+.graph-wrap{overflow-x:auto;background:var(--surface);border-bottom:1px solid var(--line)}
+#graph svg{display:block}
+.edge{fill:none;stroke-width:2.5}
+.node{cursor:pointer}
+.node circle.body{fill:var(--surface);stroke-width:3}
+.node.sel circle.body{stroke-width:5}
+.node.ghost{opacity:.38}
+.node.ghost circle.body{stroke-dasharray:3 3}
+.node text.h{font:500 11px var(--font-mono);fill:var(--muted);text-anchor:middle}
+.node.sel text.h{fill:var(--ink);font-weight:600}
+.node text.m{font:11px var(--font-body);fill:var(--muted);text-anchor:middle}
+.node .halo{fill:none;stroke:var(--accent);stroke-width:2;opacity:0}
+.node.sel .halo{opacity:1}
+.node .badge{fill:var(--danger)}
+.node .badge-t{fill:#fff;font:700 10px var(--font-body);text-anchor:middle}
+.pill rect{stroke-width:1.5}
+.pill text{font:600 11px var(--font-mono)}
+.fresh circle.body{animation:pop 1.4s ease-out}
+.fresh .ring{animation:ring 1.4s ease-out forwards}
+.ring{fill:none;stroke:var(--accent);stroke-width:2;opacity:0;transform-box:fill-box;transform-origin:center}
+@keyframes ring{0%{opacity:.9;transform:scale(1)}100%{opacity:0;transform:scale(2.4)}}
+@keyframes pop{0%{fill:var(--accent-soft)}100%{fill:var(--surface)}}
+@media (prefers-reduced-motion: reduce){.fresh circle.body,.fresh .ring{animation:none}}
+
+.panes{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:16px;padding:16px 20px}
+@media (max-width:900px){.panes{grid-template-columns:minmax(0,1fr)}}
+.pane{background:var(--surface);border:1px solid var(--line);border-radius:10px;padding:14px 16px;min-width:0;display:flex;flex-direction:column;gap:12px}
+.pane h2,.log h2{margin:0;font-size:12px;letter-spacing:.06em;text-transform:uppercase;color:var(--muted);font-weight:600}
+.crumbs{display:flex;flex-wrap:wrap;gap:4px;align-items:center;font-family:var(--font-mono);font-size:12px}
+.crumbs button{font-family:var(--font-mono);font-size:12px;padding:2px 7px}
+.crumbs button.cur{border-color:var(--accent);color:var(--accent)}
+.crumbs span{color:var(--muted)}
+.otype{display:flex;align-items:baseline;gap:10px;flex-wrap:wrap}
+.otype .t{font-family:var(--font-mono);font-size:12px;padding:1px 8px;border-radius:4px;background:var(--code);border:1px solid var(--line)}
+.otype .full{font-family:var(--font-mono);font-size:13px;word-break:break-all}
+pre.raw{margin:0;background:var(--code);border:1px solid var(--line);border-radius:6px;padding:12px;overflow-x:auto;font-size:12.5px;line-height:1.6;white-space:pre}
+button.h{font-family:var(--font-mono);font-size:inherit;color:var(--accent);background:none;border:0;padding:0;border-radius:2px;text-decoration:underline;text-decoration-style:dotted;text-underline-offset:3px}
+button.h:hover{text-decoration-style:solid}
+.formula{font-family:var(--font-mono);font-size:12px;color:var(--muted);word-break:break-all;background:var(--code);border-radius:6px;padding:8px 10px;border:1px dashed var(--line)}
+.formula b{color:var(--ink);font-weight:600}
+.changes{display:flex;flex-wrap:wrap;gap:6px}
+.chg{font-family:var(--font-mono);font-size:12px;border:1px solid var(--line);border-radius:4px;padding:1px 7px}
+.chg i{font-style:normal;font-weight:600;margin-right:5px}
+.chg.A i{color:var(--ok)} .chg.M i{color:var(--l4)} .chg.D i{color:var(--danger)}
+.warn{background:var(--danger-soft);color:var(--danger);border-radius:6px;padding:8px 10px;font-size:13px}
+.warn code{font-size:12px}
+
+.seg{display:inline-flex;border:1px solid var(--line);border-radius:7px;overflow:hidden;align-self:flex-start}
+.seg button{border:0;border-radius:0;padding:5px 12px}
+.seg button.on{background:var(--ink);color:var(--surface)}
+.ed{display:grid;grid-template-columns:180px minmax(0,1fr);gap:10px;min-height:230px}
+@media (max-width:520px){.ed{grid-template-columns:minmax(0,1fr)}}
+.files{list-style:none;margin:0;padding:0;display:flex;flex-direction:column;gap:2px;font-family:var(--font-mono);font-size:12px;overflow:auto;max-height:300px}
+.files button{width:100%;text-align:left;border:1px solid transparent;background:transparent;font-family:var(--font-mono);font-size:12px;padding:4px 6px;display:flex;justify-content:space-between;gap:6px;word-break:break-all}
+.files button.on{background:var(--code);border-color:var(--line)}
+.files .st{font-weight:600}
+.st.A{color:var(--ok)} .st.M{color:var(--l4)}
+.addrow{display:flex;gap:4px;margin-top:6px}
+.addrow input{min-width:0;flex:1;font-size:12px}
+.fileed{display:flex;flex-direction:column;gap:6px;min-width:0}
+.fileed .row{display:flex;gap:6px}
+.fileed .row input{flex:1;min-width:0}
+.fileed textarea{flex:1;min-height:180px;resize:vertical;font-size:12.5px;line-height:1.5;tab-size:2}
+.empty{color:var(--muted);font-size:13px;padding:8px}
+#msg{width:100%;min-height:44px;resize:vertical}
+.preview{display:grid;grid-template-columns:auto minmax(0,1fr);gap:3px 12px;font-family:var(--font-mono);font-size:12px;background:var(--code);border:1px solid var(--line);border-radius:6px;padding:8px 10px}
+.preview span:nth-child(odd){color:var(--muted)}
+.preview .chg-on{color:var(--accent);font-weight:600}
+.preview s{color:var(--muted)}
+.actions{display:flex;gap:8px;flex-wrap:wrap;align-items:center}
+.note{font-size:12px;color:var(--muted)}
+
+.log{padding:0 20px 28px}
+.log ol{list-style:none;margin:8px 0 0;padding:0;display:flex;flex-direction:column;gap:4px;font-size:13px}
+.log li{background:var(--surface);border:1px solid var(--line);border-left:3px solid var(--line);border-radius:6px;padding:6px 10px}
+.log li.op{border-left-color:var(--accent)}
+.log li .cmd{font-family:var(--font-mono);font-weight:600;margin-right:8px}
+.log li .det{font-family:var(--font-mono);font-size:12px;color:var(--muted);display:block;margin-top:2px}
+.log li .det .bad{color:var(--danger)}
+
+.modal{position:fixed;inset:0;background:rgba(10,14,12,.5);display:flex;align-items:flex-start;justify-content:center;padding:6vh 16px;z-index:20;overflow:auto}
+.modal[hidden]{display:none}
+.dialog{background:var(--surface);border:1px solid var(--line);border-radius:12px;padding:18px 20px;width:min(720px,100%);display:flex;flex-direction:column;gap:12px;box-shadow:0 20px 50px rgba(0,0,0,.25)}
+.dialog h2{margin:0;font-family:var(--font-mono);font-size:16px}
+.todo{list-style:none;margin:0;padding:0;display:flex;flex-direction:column;gap:6px}
+.todo li{display:grid;grid-template-columns:auto 96px 70px minmax(0,1fr);gap:6px;align-items:center;padding:6px;border:1px solid var(--line);border-radius:7px;background:var(--code)}
+.todo li.drop{opacity:.5}
+.todo li.drop input{text-decoration:line-through}
+.todo .mv{display:flex;gap:2px}
+.todo .mv button{padding:2px 7px}
+.todo code{font-size:12px;color:var(--accent)}
+.todo input{width:100%}
+.todo input[readonly]{background:transparent;border-color:transparent}
+.err{color:var(--danger);font-size:13px;min-height:1em;margin:0}
+</style>
+</head>
+<body>
+<header class="top">
+  <div class="brand">
+    <svg width="22" height="22" viewBox="0 0 22 22" aria-hidden="true"><circle cx="5" cy="5" r="3" fill="var(--l0)"/><circle cx="5" cy="17" r="3" fill="var(--l0)"/><circle cx="17" cy="11" r="3" fill="var(--accent)"/><path d="M5 8v6M5 8c0 3 9 3 9 3" stroke="var(--muted)" stroke-width="1.6" fill="none"/></svg>
+    git object playground
+  </div>
+  <div class="group">
+    <div id="branches" class="chips"></div>
+    <button id="btnNewBranch" title="Create a branch at the selected commit">+ branch</button>
+  </div>
+  <span class="sep" aria-hidden="true"></span>
+  <div class="group">
+    <span class="lbl">merge into <b class="headName"></b></span>
+    <select id="mergeSel" aria-label="Branch to merge"></select>
+    <label><input type="checkbox" id="noff"> --no-ff</label>
+    <button id="btnMerge">git merge</button>
+  </div>
+  <span class="sep" aria-hidden="true"></span>
+  <div class="group">
+    <span class="lbl">rebase <b class="headName"></b> onto</span>
+    <select id="rebaseSel" aria-label="Rebase onto"></select>
+    <button id="btnRebase">git rebase</button>
+    <button id="btnRebaseI">rebase -i…</button>
+  </div>
+  <span class="sep" aria-hidden="true"></span>
+  <div class="group">
+    <button id="btnUndo">Undo</button>
+    <button id="btnReset">Reset</button>
+    <label><input type="checkbox" id="ghosts" checked> unreachable</label>
+    <button id="btnGc" title="Delete unreachable commits">git gc</button>
+  </div>
+</header>
+
+<section class="graph-wrap" id="graphWrap" aria-label="Commit timeline"><div id="graph"></div></section>
+
+<main class="panes">
+  <section class="pane" id="inspector" aria-label="Object inspector"></section>
+  <section class="pane" id="editor" aria-label="Tree editor"></section>
+</main>
+
+<section class="log" aria-label="Operation log"><h2>Log</h2><ol id="log"></ol></section>
+
+<div id="modal" class="modal" hidden></div>
+
+<script>
+/* ---------- SHA-1 + git object encoding ---------- */
+function sha1(bytes){const ml=bytes.length*8;const p=new Uint8Array(((bytes.length+9+63)>>6)<<6);p.set(bytes);p[bytes.length]=0x80;const dv=new DataView(p.buffer);dv.setUint32(p.length-4,ml>>>0);dv.setUint32(p.length-8,Math.floor(ml/4294967296));let h0=0x67452301,h1=0xEFCDAB89,h2=0x98BADCFE,h3=0x10325476,h4=0xC3D2E1F0;const w=new Uint32Array(80);for(let i=0;i<p.length;i+=64){for(let t=0;t<16;t++)w[t]=dv.getUint32(i+t*4);for(let t=16;t<80;t++){const x=w[t-3]^w[t-8]^w[t-14]^w[t-16];w[t]=(x<<1)|(x>>>31);}let a=h0,b=h1,c=h2,d=h3,e=h4;for(let t=0;t<80;t++){let f,k;if(t<20){f=(b&c)|(~b&d);k=0x5A827999;}else if(t<40){f=b^c^d;k=0x6ED9EBA1;}else if(t<60){f=(b&c)|(b&d)|(c&d);k=0x8F1BBCDC;}else{f=b^c^d;k=0xCA62C1D6;}const tmp=(((a<<5)|(a>>>27))+f+e+k+w[t])>>>0;e=d;d=c;c=((b<<30)|(b>>>2))>>>0;b=a;a=tmp;}h0=(h0+a)>>>0;h1=(h1+b)>>>0;h2=(h2+c)>>>0;h3=(h3+d)>>>0;h4=(h4+e)>>>0;}return [h0,h1,h2,h3,h4].map(x=>x.toString(16).padStart(8,'0')).join('');}
+const enc=new TextEncoder();
+function concat(arrs){let n=0;arrs.forEach(a=>n+=a.length);const o=new Uint8Array(n);let i=0;arrs.forEach(a=>{o.set(a,i);i+=a.length});return o;}
+function hexBytes(h){const o=new Uint8Array(20);for(let i=0;i<20;i++)o[i]=parseInt(h.substr(i*2,2),16);return o;}
+function hashObject(type,body){return sha1(concat([enc.encode(`${type} ${body.length}\0`),body]));}
+
+const OBJ={}; // content-addressed object store: hash -> {type, ...}
+function writeBlob(content){const b=enc.encode(content);const h=hashObject('blob',b);if(!OBJ[h])OBJ[h]={type:'blob',content,size:b.length};return h;}
+function nest(flat){const root={};for(const [p,c] of Object.entries(flat)){const parts=p.split('/');let n=root;for(let i=0;i<parts.length-1;i++){if(typeof n[parts[i]]!=='object')n[parts[i]]={};n=n[parts[i]];}n[parts[parts.length-1]]=c;}return root;}
+function writeTreeNode(node){
+  const entries=Object.keys(node).map(name=>typeof node[name]==='string'
+    ?{mode:'100644',type:'blob',name,hash:writeBlob(node[name])}
+    :{mode:'40000',type:'tree',name,hash:writeTreeNode(node[name])});
+  const key=e=>e.name+(e.type==='tree'?'/':'');
+  entries.sort((a,b)=>key(a)<key(b)?-1:key(a)>key(b)?1:0);
+  const parts=[];entries.forEach(e=>{parts.push(enc.encode(`${e.mode} ${e.name}\0`));parts.push(hexBytes(e.hash));});
+  const body=concat(parts);const h=hashObject('tree',body);
+  if(!OBJ[h])OBJ[h]={type:'tree',entries,size:body.length};return h;
+}
+const writeTree=flat=>writeTreeNode(nest(flat));
+const WHO='You <you@example.com>';
+function commitText(th,parents,time,msg){let s=`tree ${th}\n`;parents.forEach(p=>s+=`parent ${p}\n`);s+=`author ${WHO} ${time} +0100\ncommitter ${WHO} ${time} +0100\n\n${msg.replace(/\s+$/,'')}\n`;return s;}
+function commitHash(tree,parents,time,msg){const th=writeTree(tree);const text=commitText(th,parents,time,msg);const body=enc.encode(text);return {h:hashObject('commit',body),th,text,size:body.length};}
+
+/* ---------- repository state ---------- */
+let S; let UNDO=[]; const LOG=[];
+const UI={sel:null,stack:[],ghosts:true,fresh:new Set(),draft:null,rb:null};
+
+function makeCommit({tree,parents,message,time,conflicts=[]}){
+  message=message.replace(/\s+$/,'')||'(no message)';
+  const {h,th,text,size}=commitHash(tree,parents,time,message);
+  if(!OBJ[h])OBJ[h]={type:'commit',text,size,tree:th,parents:[...parents]};
+  if(!S.commits[h])S.commits[h]={hash:h,tree:{...tree},treeHash:th,parents:[...parents],message,time,seq:++S.seq,conflicts:[...conflicts]};
+  return h;
+}
+function init(){
+  S={commits:{},branches:{},head:'main',seq:0,clock:1767225600};
+  const t=S.clock;
+  const T1={'README.md':'# Tackle Box\n\nLog every catch.\n'};
+  const c1=makeCommit({tree:T1,parents:[],message:'Initial commit',time:t});
+  const T2={...T1,'src/log.js':"export function logCatch(species, lbs) {\n  return { species, lbs };\n}\n"};
+  const c2=makeCommit({tree:T2,parents:[c1],message:'Add catch logger',time:t+3600});
+  const T3={...T2,'src/species.js':"export const SPECIES = ['bass', 'pike', 'trout'];\n"};
+  const c3=makeCommit({tree:T3,parents:[c2],message:'Add species list',time:t+7200});
+  const T4={...T3,'README.md':'# Tackle Box\n\nLog every catch.\n\n## Usage\n\nlogCatch("pike", 6.2)\n'};
+  const c4=makeCommit({tree:T4,parents:[c3],message:'Document usage',time:t+9000});
+  S.branches={main:c4};S.head='main';S.clock=t+9000;
+  return c4;
+}
+const newTime=()=>(S.clock+=600);
+function pushUndo(){UNDO.push(JSON.stringify({S,sel:UI.sel}));if(UNDO.length>200)UNDO.shift();}
+
+/* ---------- graph helpers ---------- */
+const short=h=>h.slice(0,7);
+const firstLine=m=>m.split('\n')[0];
+const tip=b=>S.branches[b];
+function ancestors(h){const s=new Set(),st=[h];while(st.length){const x=st.pop();if(!x||s.has(x)||!S.commits[x])continue;s.add(x);st.push(...S.commits[x].parents);}return s;}
+function reachable(){const s=new Set();Object.values(S.branches).forEach(h=>ancestors(h).forEach(x=>s.add(x)));return s;}
+function mergeBase(a,b){const A=ancestors(a);let best=null;ancestors(b).forEach(x=>{if(A.has(x)&&(!best||S.commits[x].seq>S.commits[best].seq))best=x;});return best;}
+function parentTree(c){return c.parents[0]&&S.commits[c.parents[0]]?S.commits[c.parents[0]].tree:{};}
+const bySeq=(a,b)=>S.commits[a].seq-S.commits[b].seq;
+function branchOrder(a,b){return a==='main'?-1:b==='main'?1:a.localeCompare(b);}
+
+/* ---------- tree algebra ---------- */
+function diffTrees(a,b){const d={};new Set([...Object.keys(a),...Object.keys(b)]).forEach(p=>{const x=p in a?a[p]:null,y=p in b?b[p]:null;if(x!==y)d[p]={before:x,after:y};});return d;}
+function sameTree(a,b){return Object.keys(diffTrees(a,b)).length===0;}
+const nl=s=>s.endsWith('\n')?s:s+'\n';
+function markers(o,t,lo,lt){return `<<<<<<< ${lo}\n${o===null?'(deleted)\n':nl(o)}=======\n${t===null?'(deleted)\n':nl(t)}>>>>>>> ${lt}\n`;}
+function applyDelta(base,delta,label){
+  const t={...base},conflicts=[];
+  for(const p in delta){const {before,after}=delta[p];const cur=p in t?t[p]:null;
+    if(cur===before||cur===after){if(after===null)delete t[p];else t[p]=after;}
+    else{t[p]=markers(cur,after,'HEAD',label);conflicts.push(p);}}
+  return {tree:t,conflicts};
+}
+function merge3(base,ours,theirs){
+  const t={},conflicts=[];
+  new Set([...Object.keys(base),...Object.keys(ours),...Object.keys(theirs)]).forEach(p=>{
+    const b=p in base?base[p]:null,o=p in ours?ours[p]:null,th=p in theirs?theirs[p]:null;let r;
+    if(o===th)r=o;else if(o===b)r=th;else if(th===b)r=o;else{r=markers(o,th,'ours','theirs');conflicts.push(p);}
+    if(r!==null)t[p]=r;});
+  return {tree:t,conflicts};
+}
+function autoMerge(parents){const [a,b]=parents;const base=mergeBase(a,b);return merge3(base?S.commits[base].tree:{},S.commits[a].tree,S.commits[b].tree);}
+
+/* ---------- operations ---------- */
+const hb=h=>`<button class="h" data-select="${h}">${short(h)}</button>`;
+function log(cmd,det,op=true){LOG.unshift({cmd,det,op});if(LOG.length>80)LOG.pop();}
+
+function rewrite(X,newTree,newMsg){
+  const reach=reachable();
+  const desc=[...reach].filter(h=>ancestors(h).has(X)).sort(bySeq);
+  const map={},lines=[];
+  for(const h of desc){
+    const D=S.commits[h];const np=D.parents.map(p=>map[p]||p);
+    let tree,conflicts=[],msg=D.message;
+    if(h===X){tree=newTree;msg=newMsg;}
+    else if(D.parents.length>1){
+      const oldAuto=autoMerge(D.parents).tree,nr=autoMerge(np);
+      tree={...nr.tree};conflicts=[...nr.conflicts];
+      const ov=diffTrees(oldAuto,D.tree);
+      for(const p in ov){const want=ov[p].after;const was=p in oldAuto?oldAuto[p]:null,now=p in nr.tree?nr.tree[p]:null;
+        if(was===now){if(want===null)delete tree[p];else tree[p]=want;conflicts=conflicts.filter(x=>x!==p);}
+        else if(!conflicts.includes(p)){tree[p]=markers(now,want,'merged','earlier resolution');conflicts.push(p);}}
+    } else {
+      const res=applyDelta(np[0]?S.commits[np[0]].tree:{},diffTrees(parentTree(D),D.tree),short(h)+' '+firstLine(D.message));
+      tree=res.tree;conflicts=res.conflicts;
+    }
+    const nh=makeCommit({tree,parents:np,message:msg,time:D.time,conflicts});
+    map[h]=nh;
+    if(nh!==h)lines.push(`${hb(h)} → ${hb(nh)}${conflicts.length?` <span class="bad">conflict: ${conflicts.map(esc).join(', ')}</span>`:''}`);
+  }
+  for(const b in S.branches)if(map[S.branches[b]])S.branches[b]=map[S.branches[b]];
+  return {map,lines};
+}
+
+function toReplay(headTip,onto){const O=ancestors(onto);return [...ancestors(headTip)].filter(h=>!O.has(h)&&S.commits[h].parents.length<=1).sort(bySeq);}
+
+function replay(onto,rows){
+  const before=new Set(Object.keys(S.commits));
+  let cur=onto,picked=0;const lines=[],fresh=[];
+  for(const r of rows){
+    const c=S.commits[r.hash];
+    if(r.action==='drop'){lines.push(`drop ${hb(c.hash)}`);continue;}
+    const delta=diffTrees(parentTree(c),c.tree);const label=short(c.hash)+' '+firstLine(c.message);
+    if((r.action==='squash'||r.action==='fixup')&&picked){
+      const last=S.commits[cur];const res=applyDelta(last.tree,delta,label);
+      const msg=r.action==='squash'?last.message+'\n\n'+c.message:last.message;
+      cur=makeCommit({tree:res.tree,parents:last.parents,message:msg,time:last.time,conflicts:[...new Set([...last.conflicts,...res.conflicts])]});
+      fresh.pop();fresh.push(cur);
+      lines.push(`${r.action} ${hb(c.hash)} → ${hb(cur)}${res.conflicts.length?` <span class="bad">conflict: ${res.conflicts.map(esc).join(', ')}</span>`:''}`);
+      continue;
+    }
+    const base=S.commits[cur];const res=applyDelta(base.tree,delta,label);
+    if(!res.conflicts.length&&sameTree(res.tree,base.tree)){lines.push(`skip ${hb(c.hash)} (already applied)`);continue;}
+    const msg=r.action==='reword'?(r.msg||c.message):c.message;
+    cur=makeCommit({tree:res.tree,parents:[cur],message:msg,time:c.time,conflicts:res.conflicts});
+    picked++;fresh.push(cur);
+    lines.push(`${r.action==='squash'||r.action==='fixup'?'pick':r.action} ${hb(c.hash)} → ${hb(cur)}${res.conflicts.length?` <span class="bad">conflict: ${res.conflicts.map(esc).join(', ')}</span>`:''}`);
+  }
+  return {tip:cur,lines,fresh,created:Object.keys(S.commits).filter(h=>!before.has(h))};
+}
+function finishRebase(result,label){
+  const old=tip(S.head);S.branches[S.head]=result.tip;
+  const reach=reachable();result.created.forEach(h=>{if(!reach.has(h))delete S.commits[h];});
+  log(label,`${S.head}: ${hb(old)} → ${hb(result.tip)}<br>${result.lines.join('<br>')}`);
+  UI.fresh=new Set(result.fresh.filter(h=>S.commits[h]));
+  select(result.tip);
+}
+
+function doRebase(ontoHash,ontoLabel){
+  const head=tip(S.head);
+  const rows=toReplay(head,ontoHash).map(h=>({hash:h,action:'pick'}));
+  pushUndo();
+  if(!rows.length){
+    if(ancestors(head).has(ontoHash)){UNDO.pop();log(`git rebase ${ontoLabel}`,'Current branch is up to date.',false);renderAll();return;}
+    S.branches[S.head]=ontoHash;log(`git rebase ${ontoLabel}`,`fast-forward ${S.head}: ${hb(head)} → ${hb(ontoHash)}`);UI.fresh=new Set([ontoHash]);select(ontoHash);return;
+  }
+  finishRebase(replay(ontoHash,rows),`git rebase ${ontoLabel}`);
+}
+
+function doMerge(other,noff){
+  const ours=tip(S.head),theirs=tip(other);
+  if(ancestors(ours).has(theirs)){log(`git merge ${other}`,'Already up to date.',false);renderAll();return;}
+  pushUndo();
+  if(!noff&&ancestors(theirs).has(ours)){S.branches[S.head]=theirs;log(`git merge ${other}`,`fast-forward ${S.head}: ${hb(ours)} → ${hb(theirs)}`);UI.fresh=new Set([theirs]);select(theirs);return;}
+  const r=autoMerge([ours,theirs]);
+  const h=makeCommit({tree:r.tree,parents:[ours,theirs],message:`Merge branch '${other}' into ${S.head}`,time:newTime(),conflicts:r.conflicts});
+  S.branches[S.head]=h;
+  log(`git merge ${other}${noff?' --no-ff':''}`,`base ${(()=>{const b=mergeBase(ours,theirs);return b?hb(b):'none';})()} · ours ${hb(ours)} · theirs ${hb(theirs)} → ${hb(h)}${r.conflicts.length?`<br><span class="bad">conflict: ${r.conflicts.map(esc).join(', ')}</span>`:''}`);
+  UI.fresh=new Set([h]);select(h);
+}
+
+/* ---------- rendering ---------- */
+const $=s=>document.querySelector(s);
+const esc=s=>String(s).replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+const LANES=6;
+
+function renderAll(){renderToolbar();renderGraph();renderInspector();renderLog();}
+
+function renderToolbar(){
+  const bs=Object.keys(S.branches).sort(branchOrder);
+  $('#branches').innerHTML=bs.map(b=>`<span class="chip ${b===S.head?'on':''}"><button data-checkout="${esc(b)}" title="${b===S.head?'Current branch':'git checkout '+esc(b)}">${b===S.head?'HEAD → ':''}${esc(b)}</button>${b!==S.head?`<button class="x" data-delbranch="${esc(b)}" aria-label="Delete branch ${esc(b)}" title="git branch -D ${esc(b)}">×</button>`:''}</span>`).join('');
+  document.querySelectorAll('.headName').forEach(e=>e.textContent=S.head);
+  const others=bs.filter(b=>b!==S.head);
+  for(const id of ['#mergeSel','#rebaseSel']){const el=$(id),v=el.value;el.innerHTML=others.map(b=>`<option value="${esc(b)}">${esc(b)}</option>`).join('');if(others.includes(v))el.value=v;el.disabled=!others.length;}
+  $('#btnMerge').disabled=$('#btnRebase').disabled=!others.length;
+  $('#btnUndo').disabled=!UNDO.length;
+  const reach=reachable();$('#btnGc').disabled=Object.keys(S.commits).every(h=>reach.has(h));
+}
+
+function renderGraph(){
+  const reach=reachable();
+  const vis=Object.keys(S.commits).filter(h=>UI.ghosts||reach.has(h)).sort(bySeq);
+  const visSet=new Set(vis);
+  const lane={};let nlanes=0;
+  for(const b of Object.keys(S.branches).sort(branchOrder)){let h=tip(b),used=false;while(h&&lane[h]===undefined&&visSet.has(h)){lane[h]=nlanes;used=true;h=S.commits[h].parents[0];}if(used)nlanes++;}
+  [...vis].reverse().forEach(h0=>{if(lane[h0]!==undefined)return;let h=h0;while(h&&lane[h]===undefined&&visSet.has(h)){lane[h]=nlanes;h=S.commits[h].parents[0];}nlanes++;});
+  const DX=92,DY=78,X0=56,Y0=58;
+  const pos={};vis.forEach((h,i)=>pos[h]={x:X0+i*DX,y:Y0+lane[h]*DY});
+  const W=X0*2+Math.max(0,vis.length-1)*DX+60,H=Y0+Math.max(1,nlanes)*DY-10;
+  const col=h=>`var(--l${lane[h]%LANES})`;
+  const atCommit={};for(const b in S.branches)(atCommit[S.branches[b]]=atCommit[S.branches[b]]||[]).push(b);
+  let edges='',nodes='',pills='';
+  for(const h of vis){const c=S.commits[h];c.parents.forEach((p,i)=>{if(!visSet.has(p))return;const a=pos[p],b=pos[h];
+    const k=lane[h]>=lane[p]?h:p;const ghost=!reach.has(h);
+    const d=a.y===b.y?`M${a.x} ${a.y}L${b.x} ${b.y}`:`M${a.x} ${a.y}C${a.x+DX*.6} ${a.y} ${b.x-DX*.6} ${b.y} ${b.x} ${b.y}`;
+    edges+=`<path class="edge" d="${d}" stroke="${col(i>0?p:k)}"${ghost?' stroke-dasharray="4 4" opacity=".4"':''}/>`;});}
+  for(const h of vis){const c=S.commits[h],{x,y}=pos[h];const ghost=!reach.has(h);
+    const cls=['node',h===UI.sel?'sel':'',ghost?'ghost':'',UI.fresh.has(h)?'fresh':''].join(' ');
+    const m=firstLine(c.message);const mm=m.length>14?m.slice(0,13)+'…':m;
+    nodes+=`<g class="${cls}" data-select="${h}" tabindex="0" role="button" aria-label="commit ${short(h)}: ${esc(m)}"><title>${esc(short(h)+' '+m)}${ghost?' (unreachable)':''}</title>
+      <circle class="ring" cx="${x}" cy="${y}" r="14"/><circle class="halo" cx="${x}" cy="${y}" r="20"/>
+      <circle class="body" cx="${x}" cy="${y}" r="13" stroke="${col(h)}"/>${c.parents.length>1?`<circle cx="${x}" cy="${y}" r="5" fill="${col(h)}"/>`:''}
+      ${c.conflicts.length?`<circle class="badge" cx="${x+11}" cy="${y-11}" r="7"/><text class="badge-t" x="${x+11}" y="${y-7.5}">!</text>`:''}
+      <text class="h" x="${x}" y="${y+28}">${short(h)}</text><text class="m" x="${x}" y="${y+41}">${esc(mm)}</text></g>`;
+    if(atCommit[h]){const label=atCommit[h].sort(branchOrder).map(b=>b===S.head?'HEAD → '+b:b).join(', ');const w=label.length*6.7+14;const isHead=atCommit[h].includes(S.head);
+      pills+=`<g class="pill"><rect x="${x-w/2}" y="${y-41}" width="${w}" height="18" rx="9" fill="${isHead?'var(--accent)':'var(--surface)'}" stroke="${isHead?'var(--accent)':col(h)}"/><text x="${x}" y="${y-28}" text-anchor="middle" fill="${isHead?'var(--surface)':col(h)}">${esc(label)}</text></g>`;}}
+  $('#graph').innerHTML=`<svg width="${W}" height="${H}" viewBox="0 0 ${W} ${H}">${edges}${nodes}${pills}</svg>`;
+  const wrap=$('#graphWrap');if(UI.sel&&pos[UI.sel]){const x=pos[UI.sel].x;if(x<wrap.scrollLeft+60||x>wrap.scrollLeft+wrap.clientWidth-60)wrap.scrollLeft=x-wrap.clientWidth/2;}
+}
+
+function renderInspector(){
+  const el=$('#inspector');const c=S.commits[UI.sel];
+  if(!c){el.innerHTML='<h2>Object</h2><p class="empty">Select a commit.</p>';return;}
+  const top=UI.stack[UI.stack.length-1];const o=OBJ[top.hash];
+  const crumbs=UI.stack.map((s,i)=>`${i?'<span>›</span>':''}<button data-crumb="${i}" class="${i===UI.stack.length-1?'cur':''}">${esc(s.label)} ${short(s.hash)}</button>`).join('');
+  let body='';
+  if(o.type==='commit'){
+    const lines=o.text.replace(/\n$/,'').split('\n').map(l=>{
+      let m;if((m=l.match(/^tree ([0-9a-f]{40})$/)))return `tree <button class="h" data-push="${m[1]}" data-label="tree">${m[1]}</button>`;
+      if((m=l.match(/^parent ([0-9a-f]{40})$/)))return `parent <button class="h" data-select="${m[1]}">${m[1]}</button>`;
+      return esc(l);}).join('\n');
+    const ch=diffTrees(parentTree(c),c.tree);
+    const chips=Object.keys(ch).sort().map(p=>{const k=ch[p].before===null?'A':ch[p].after===null?'D':'M';return `<span class="chg ${k}"><i>${k}</i>${esc(p)}</span>`;}).join('')||'<span class="note">no changes vs first parent</span>';
+    body=`${c.conflicts.length?`<div class="warn">Conflict markers committed in <code>${c.conflicts.map(esc).join('</code>, <code>')}</code>. Edit the tree to resolve.</div>`:''}
+      <pre class="raw">${lines}</pre>
+      <div class="changes">${chips}</div>`;
+  } else if(o.type==='tree'){
+    body=`<pre class="raw">${o.entries.map(e=>`${e.mode.padStart(6,'0')} ${e.type} <button class="h" data-push="${e.hash}" data-label="${esc(e.name)}">${e.hash}</button>\t${esc(e.name)}${e.type==='tree'?'/':''}`).join('\n')||'(empty tree)'}</pre>`;
+  } else {
+    body=`<pre class="raw">${esc(o.content)}</pre>`;
+  }
+  const what=o.type==='commit'?'commit text above':o.type==='tree'?'entries: "&lt;mode&gt; &lt;name&gt;\\0" + 20-byte hash':'file bytes';
+  el.innerHTML=`<h2>Object</h2><nav class="crumbs" aria-label="Object path">${crumbs}</nav>
+    <div class="otype"><span class="t">${o.type}</span><span class="full">${top.hash}</span></div>
+    ${body}
+    <div class="formula">sha1( <b>"${o.type} ${o.size}\\0"</b> + ${what} ) = <b>${top.hash}</b></div>`;
+}
+
+function renderLog(){
+  $('#log').innerHTML=LOG.map(e=>`<li class="${e.op?'op':''}"><span class="cmd">${esc(e.cmd)}</span><span class="det">${e.det}</span></li>`).join('')||'<li><span class="det">Click a commit, open its tree, edit files, merge or rebase. Every change shows up here.</span></li>';
+}
+
+/* ---------- tree editor ---------- */
+function openEditor(){
+  const c=S.commits[UI.sel];if(!c){UI.draft=null;renderEditor();return;}
+  const isTip=tip(S.head)===c.hash;
+  UI.draft={mode:UI.draft&&UI.draft.mode==='new'&&isTip?'new':'rewrite',tree:{...c.tree},message:c.message,newMessage:'',file:Object.keys(c.tree).sort()[0]||null};
+  renderEditor();
+}
+function draftValid(t){
+  const ps=Object.keys(t);
+  for(const p of ps){if(!p||/^\/|\/$|\/\/|(^|\/)\.\.?(\/|$)/.test(p))return `Invalid path "${p}"`;
+    const parts=p.split('/');for(let i=1;i<parts.length;i++){const pre=parts.slice(0,i).join('/');if(pre in t)return `"${pre}" is both a file and a folder`;}}
+  return null;
+}
+function renderEditor(){
+  const el=$('#editor');const c=S.commits[UI.sel];const d=UI.draft;
+  if(!c||!d){el.innerHTML='<h2>Tree</h2><p class="empty">Select a commit.</p>';return;}
+  const ghost=!reachable().has(c.hash);const isTip=tip(S.head)===c.hash;
+  el.innerHTML=`<h2>Tree of ${short(c.hash)}</h2>
+    <div class="seg" role="tablist">
+      <button data-mode="rewrite" class="${d.mode==='rewrite'?'on':''}" role="tab" aria-selected="${d.mode==='rewrite'}">Edit this commit</button>
+      <button data-mode="new" class="${d.mode==='new'?'on':''}" role="tab" aria-selected="${d.mode==='new'}" ${isTip?'':'disabled title="Select the tip of the checked-out branch to commit on top"'}>New commit on ${esc(S.head)}</button>
+    </div>
+    <div class="ed">
+      <div><ul class="files" id="files"></ul>
+        <div class="addrow"><input type="text" id="newPath" placeholder="src/new.js" aria-label="New file path"><button id="addFile">Add</button></div></div>
+      <div class="fileed" id="fileed"></div>
+    </div>
+    <label for="msg" style="color:var(--muted);font-size:12px">Commit message</label>
+    <textarea id="msg"></textarea>
+    <div class="preview" id="preview" aria-live="polite"></div>
+    <div class="actions">
+      <button class="primary" id="apply"></button>
+      <button id="discard">Discard edits</button>
+      <span class="note" id="edNote"></span>
+    </div>`;
+  $('#msg').value=d.mode==='new'?d.newMessage:d.message;
+  $('#msg').placeholder=d.mode==='new'?'Describe the change':'';
+  renderFiles();renderFileEd();updatePreview();
+  if(ghost){$('#apply').disabled=true;$('#edNote').textContent='Unreachable commit: no branch would see the rewrite.';}
+}
+function renderFiles(){
+  const d=UI.draft,c=S.commits[UI.sel];const base=d.mode==='new'?c.tree:c.tree;
+  const ps=Object.keys(d.tree).sort();
+  const deleted=Object.keys(base).filter(p=>!(p in d.tree));
+  $('#files').innerHTML=ps.map(p=>{const st=!(p in base)?'A':base[p]!==d.tree[p]?'M':'';return `<li><button data-file="${esc(p)}" class="${p===d.file?'on':''}"><span>${esc(p)}</span><span class="st ${st}">${st}</span></button></li>`;}).join('')
+    +deleted.map(p=>`<li><button data-restore="${esc(p)}" title="Restore"><span style="text-decoration:line-through;color:var(--muted)">${esc(p)}</span><span class="st" style="color:var(--danger)">D</span></button></li>`).join('')
+    ||'<li class="empty">No files</li>';
+}
+function renderFileEd(){
+  const d=UI.draft;const el=$('#fileed');
+  if(!d.file||!(d.file in d.tree)){el.innerHTML='<p class="empty">Pick or add a file.</p>';return;}
+  el.innerHTML=`<div class="row"><input type="text" id="fpath" aria-label="File path" value="${esc(d.file)}"><button id="delFile">Delete</button></div><textarea id="fbody" aria-label="File contents" spellcheck="false"></textarea>`;
+  $('#fbody').value=d.tree[d.file];
+}
+function updatePreview(){
+  const d=UI.draft,c=S.commits[UI.sel];
+  const err=draftValid(d.tree);
+  const th=err?null:writeTree(d.tree);
+  let rows=`<span>tree</span><span>${th?`<span class="${th!==c.treeHash&&d.mode==='rewrite'?'chg-on':''}">${th}</span>`:esc(err)}</span>`;
+  let dirty;
+  if(d.mode==='rewrite'){
+    const nh=th?commitHash(d.tree,c.parents,c.time,d.message.replace(/\s+$/,'')||'(no message)').h:null;
+    dirty=nh&&nh!==c.hash;
+    rows+=`<span>commit</span><span>${nh?(dirty?`<s>${short(c.hash)}</s> → <span class="chg-on">${nh}</span>`:nh):'—'}</span>`;
+    const n=[...reachable()].filter(h=>h!==c.hash&&ancestors(h).has(c.hash)).length;
+    rows+=`<span>descendants</span><span>${n} commit${n===1?'':'s'} to rewrite</span>`;
+    $('#apply').textContent='Rewrite history';
+  } else {
+    const msg=d.newMessage.replace(/\s+$/,'');
+    const nh=th&&msg?commitHash(d.tree,[c.hash],S.clock+600,msg).h:null;
+    dirty=!!nh&&!sameTree(d.tree,c.tree);
+    rows+=`<span>parent</span><span>${c.hash}</span><span>commit</span><span>${nh?`<span class="chg-on">${nh}</span>`:(!msg?'needs a message':'—')}</span>`;
+    $('#apply').textContent='git commit';
+    if(nh&&sameTree(d.tree,c.tree))rows+=`<span></span><span>change a file first</span>`;
+  }
+  $('#preview').innerHTML=rows;
+  if(!$('#edNote').textContent.startsWith('Unreachable'))$('#apply').disabled=!dirty||!!err;
+}
+
+/* ---------- selection ---------- */
+function select(h){if(!S.commits[h])return;UI.sel=h;UI.stack=[{hash:h,label:'commit'}];openEditor();renderAll();}
+
+/* ---------- modals ---------- */
+function showModal(html){const m=$('#modal');m.innerHTML=html;m.hidden=false;const f=m.querySelector('input,select,button.primary');if(f)f.focus();}
+function closeModal(){$('#modal').hidden=true;$('#modal').innerHTML='';UI.rb=null;}
+
+function openBranchModal(){
+  const at=UI.sel;
+  showModal(`<form class="dialog" role="dialog" aria-modal="true" aria-labelledby="bt" id="branchForm">
+    <h2 id="bt">git branch &lt;name&gt; ${short(at)}</h2>
+    <label for="bname" style="color:var(--ink)">Branch name</label>
+    <input type="text" id="bname" placeholder="feature/weather" autocomplete="off">
+    <label><input type="checkbox" id="bco" checked> checkout after creating</label>
+    <p class="err" id="berr"></p>
+    <div class="actions"><button type="button" data-close>Cancel</button><button class="primary" type="submit">Create branch</button></div></form>`);
+  $('#branchForm').addEventListener('submit',e=>{e.preventDefault();const n=$('#bname').value.trim();
+    if(!/^[A-Za-z0-9._\-\/]+$/.test(n)||n.endsWith('/')||n.startsWith('/')||n.includes('..')){$('#berr').textContent='Use letters, numbers, dots, dashes and slashes.';return;}
+    if(S.branches[n]){$('#berr').textContent=`A branch named ${n} already exists.`;return;}
+    pushUndo();S.branches[n]=at;if($('#bco').checked)S.head=n;log(`git branch ${n} ${short(at)}`,`${esc(n)} → ${hb(at)}${$('#bco').checked?' · checked out':''}`);closeModal();select(at);});
+}
+
+function ontoOptions(){
+  const o=Object.keys(S.branches).sort(branchOrder).filter(b=>b!==S.head).map(b=>({value:'b:'+b,label:b}));
+  let h=S.commits[tip(S.head)].parents[0],n=1;
+  while(h&&n<=15){o.push({value:'c:'+h,label:`HEAD~${n}  ${short(h)}  ${firstLine(S.commits[h].message)}`});h=S.commits[h].parents[0];n++;}
+  return o;
+}
+const ontoHash=v=>v.startsWith('b:')?S.branches[v.slice(2)]:v.slice(2);
+const ontoLabel=v=>v.startsWith('b:')?v.slice(2):short(v.slice(2));
+function openRebaseI(){
+  const opts=ontoOptions();
+  if(!opts.length){log('git rebase -i','Nothing to rebase onto: no other branch and no earlier commits.',false);renderLog();return;}
+  const pref=opts.find(o=>o.value==='b:'+$('#rebaseSel').value)||opts.find(o=>o.value.startsWith('c:'))||opts[0];
+  UI.rb={onto:pref.value,rows:[]};computeRows();renderRebaseModal();
+}
+function computeRows(){UI.rb.rows=toReplay(tip(S.head),ontoHash(UI.rb.onto)).map(h=>({hash:h,action:'pick',msg:firstLine(S.commits[h].message)}));}
+function renderRebaseModal(){
+  const rb=UI.rb;const opts=ontoOptions();
+  const acts=['pick','reword','squash','fixup','drop'];
+  showModal(`<div class="dialog" role="dialog" aria-modal="true" aria-labelledby="rt">
+    <h2 id="rt">git rebase -i</h2>
+    <label style="color:var(--ink)">onto <select id="rbOnto">${opts.map(o=>`<option value="${esc(o.value)}" ${o.value===rb.onto?'selected':''}>${esc(o.label)}</option>`).join('')}</select></label>
+    ${rb.rows.length?`<ol class="todo">${rb.rows.map((r,i)=>`<li class="${r.action}">
+      <span class="mv"><button data-up="${i}" aria-label="Move up" ${i===0?'disabled':''}>↑</button><button data-down="${i}" aria-label="Move down" ${i===rb.rows.length-1?'disabled':''}>↓</button></span>
+      <select data-act="${i}" aria-label="Action for ${short(r.hash)}">${acts.map(a=>`<option ${a===r.action?'selected':''}>${a}</option>`).join('')}</select>
+      <code>${short(r.hash)}</code>
+      <input type="text" data-msg="${i}" value="${esc(r.msg)}" aria-label="Message" ${r.action==='reword'?'':'readonly'}></li>`).join('')}</ol>`
+      :'<p class="empty">No commits to replay: the branch already sits on top of this base.</p>'}
+    <p class="err" id="rbErr"></p>
+    <div class="actions"><button data-close>Cancel</button><button class="primary" id="rbGo" ${rb.rows.length?'':'disabled'}>Start rebase</button></div></div>`);
+  $('#rbOnto').addEventListener('change',e=>{UI.rb.onto=e.target.value;computeRows();renderRebaseModal();});
+  $('#modal').querySelectorAll('[data-act]').forEach(s=>s.addEventListener('change',e=>{const r=UI.rb.rows[+e.target.dataset.act];r.action=e.target.value;renderRebaseModal();if(r.action==='reword'){const i=$(`[data-msg="${e.target.dataset.act}"]`);i.focus();i.select();}}));
+  $('#modal').querySelectorAll('[data-msg]').forEach(s=>s.addEventListener('input',e=>{UI.rb.rows[+e.target.dataset.msg].msg=e.target.value;}));
+  $('#modal').querySelectorAll('[data-up],[data-down]').forEach(b=>b.addEventListener('click',e=>{const i=+(b.dataset.up??b.dataset.down);const j=b.dataset.up!==undefined?i-1:i+1;const R=UI.rb.rows;[R[i],R[j]]=[R[j],R[i]];renderRebaseModal();}));
+  const go=$('#rbGo');if(go)go.addEventListener('click',()=>{
+    const first=UI.rb.rows.find(r=>r.action!=='drop');
+    if(first&&(first.action==='squash'||first.action==='fixup')){$('#rbErr').textContent=`Cannot ${first.action} without a previous commit. Make the first kept commit a pick.`;return;}
+    const on=ontoHash(UI.rb.onto),lab=ontoLabel(UI.rb.onto),rows=UI.rb.rows.map(r=>({...r,msg:r.action==='reword'?r.msg+(S.commits[r.hash].message.includes('\n')?S.commits[r.hash].message.slice(S.commits[r.hash].message.indexOf('\n')):''):r.msg}));
+    closeModal();pushUndo();finishRebase(replay(on,rows),`git rebase -i ${lab}`);
+  });
+}
+
+/* ---------- events ---------- */
+document.addEventListener('click',e=>{
+  const t=e.target.closest('[data-select],[data-push],[data-crumb],[data-checkout],[data-delbranch],[data-close],[data-file],[data-restore],[data-mode]');if(!t)return;
+  if(t.dataset.close!==undefined){closeModal();return;}
+  if(t.dataset.select){if(S.commits[t.dataset.select]){if(!$('#modal').hidden)closeModal();select(t.dataset.select);}return;}
+  if(t.dataset.push){UI.stack.push({hash:t.dataset.push,label:t.dataset.label});renderInspector();return;}
+  if(t.dataset.crumb){UI.stack=UI.stack.slice(0,+t.dataset.crumb+1);renderInspector();return;}
+  if(t.dataset.checkout){if(S.head!==t.dataset.checkout){pushUndo();S.head=t.dataset.checkout;log(`git checkout ${S.head}`,`HEAD → ${esc(S.head)} at ${hb(tip(S.head))}`,false);}select(tip(S.head));return;}
+  if(t.dataset.delbranch){const b=t.dataset.delbranch;pushUndo();const h=S.branches[b];delete S.branches[b];log(`git branch -D ${b}`,`was ${hb(h)}`);renderAll();renderEditor();return;}
+  if(t.dataset.file){UI.draft.file=t.dataset.file;renderFiles();renderFileEd();return;}
+  if(t.dataset.restore){const p=t.dataset.restore;UI.draft.tree[p]=S.commits[UI.sel].tree[p];UI.draft.file=p;renderFiles();renderFileEd();updatePreview();return;}
+  if(t.dataset.mode){if(t.disabled)return;UI.draft.mode=t.dataset.mode;renderEditor();return;}
+});
+document.addEventListener('keydown',e=>{
+  if(e.key==='Escape'&&!$('#modal').hidden)closeModal();
+  if((e.key==='Enter'||e.key===' ')&&e.target.classList&&e.target.classList.contains('node')){e.preventDefault();select(e.target.dataset.select);}
+});
+$('#modal').addEventListener('click',e=>{if(e.target.id==='modal')closeModal();});
+
+$('#editor').addEventListener('input',e=>{
+  const d=UI.draft;if(!d)return;
+  if(e.target.id==='fbody'){d.tree[d.file]=e.target.value;renderFiles();updatePreview();}
+  else if(e.target.id==='msg'){if(d.mode==='new')d.newMessage=e.target.value;else d.message=e.target.value;updatePreview();}
+});
+$('#editor').addEventListener('change',e=>{
+  const d=UI.draft;if(!d||e.target.id!=='fpath')return;
+  const np=e.target.value.trim();if(!np||np===d.file)return;
+  if(np in d.tree){e.target.value=d.file;return;}
+  const content=d.tree[d.file];delete d.tree[d.file];d.tree[np]=content;d.file=np;renderFiles();updatePreview();
+});
+$('#editor').addEventListener('click',e=>{
+  const d=UI.draft;if(!d)return;
+  if(e.target.id==='delFile'){delete d.tree[d.file];d.file=Object.keys(d.tree).sort()[0]||null;renderFiles();renderFileEd();updatePreview();}
+  if(e.target.id==='addFile'){const p=$('#newPath').value.trim();if(!p)return;if(!(p in d.tree))d.tree[p]='';d.file=p;$('#newPath').value='';renderFiles();renderFileEd();updatePreview();const fb=$('#fbody');if(fb)fb.focus();}
+  if(e.target.id==='discard'){const m=d.mode;openEditor();UI.draft.mode=m;renderEditor();}
+  if(e.target.id==='apply'){
+    const c=S.commits[UI.sel];if(draftValid(d.tree))return;
+    if(d.mode==='new'){
+      pushUndo();const h=makeCommit({tree:d.tree,parents:[c.hash],message:d.newMessage,time:newTime()});
+      S.branches[S.head]=h;log(`git commit -m "${firstLine(d.newMessage.trim())}"`,`${esc(S.head)}: ${hb(c.hash)} → ${hb(h)}`);
+      UI.fresh=new Set([h]);UI.draft.mode='new';select(h);
+    } else {
+      pushUndo();const r=rewrite(c.hash,{...d.tree},d.message);
+      log(`rewrite ${short(c.hash)}`,`${r.lines.length} commit${r.lines.length===1?'':'s'} rewritten<br>${r.lines.join('<br>')}`);
+      UI.fresh=new Set(Object.entries(r.map).filter(([o,n])=>o!==n).map(([,n])=>n));
+      select(r.map[c.hash]);
+    }
+  }
+});
+$('#editor').addEventListener('keydown',e=>{if(e.target.id==='newPath'&&e.key==='Enter'){e.preventDefault();$('#addFile').click();}});
+
+$('#btnNewBranch').addEventListener('click',openBranchModal);
+$('#btnMerge').addEventListener('click',()=>doMerge($('#mergeSel').value,$('#noff').checked));
+$('#btnRebase').addEventListener('click',()=>{const b=$('#rebaseSel').value;doRebase(S.branches[b],b);});
+$('#btnRebaseI').addEventListener('click',openRebaseI);
+$('#btnUndo').addEventListener('click',()=>{const s=UNDO.pop();if(!s)return;const o=JSON.parse(s);S=o.S;UI.fresh=new Set();log('undo','restored previous state',false);select(S.commits[o.sel]?o.sel:tip(S.head));});
+$('#btnReset').addEventListener('click',()=>{pushUndo();const h=init();UI.fresh=new Set();log('reset','back to the sample repository',false);select(h);});
+$('#ghosts').addEventListener('change',e=>{UI.ghosts=e.target.checked;renderGraph();});
+$('#btnGc').addEventListener('click',()=>{const reach=reachable();const dead=Object.keys(S.commits).filter(h=>!reach.has(h));if(!dead.length)return;pushUndo();dead.forEach(h=>delete S.commits[h]);log('git gc',`pruned ${dead.length} unreachable commit${dead.length===1?'':'s'}`);select(S.commits[UI.sel]?UI.sel:tip(S.head));});
+
+select(init());
+</script>
+</body>
+</html>
